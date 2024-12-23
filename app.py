@@ -147,12 +147,12 @@ from collections import defaultdict
 def extract_specific_tag_classes(fragment, current_tag):
     tag_specific_classes = []
      
-    # attr_segment = fragment.attributes.strip()
+    attr_segment = fragment.attributes.strip()
     for attr_segment in fragment.attributes.split(';'):
         
         if 'class' in attr_segment and current_tag in attr_segment:
             
-            matches = re.findall(r"\'([^\']+)\'", attr_segment)
+            matches = re.findall(r"class=\"\[?\'?([^\"]+)\'?\]?\"", attr_segment)
 
             
             tag_specific_classes.extend(matches)
@@ -187,9 +187,10 @@ def structure_clusters(df):
                 for attr in dir(fragment):
                     if attr.startswith("Level_") and getattr(fragment, attr) == 1:
                         level_tag = attr.split("_")[2]
-                        print(level_tag)
-                        classes = extract_specific_tag_classes(fragment, level_tag)
+
                        
+                        classes = extract_specific_tag_classes(fragment, level_tag)
+
                         level_encodings[attr] = {
                             "value": 1,
                             "class": classes
@@ -256,49 +257,6 @@ def collect_fragments(fragments_df):
 def index():
     return render_template('index.html')
 
-@app.route('/uploadtemp', methods=['POST'])
-def upload_files1():
-    try:
-        if 'zip_file' not in request.files:
-            return jsonify({'error': 'No file part in the request'}), 400
-        zip_file = request.files['zip_file']
-        if zip_file and zip_file.filename.endswith('.zip') or zip_file.filename.endswith('.epub'):
-            filename = secure_filename(zip_file.filename)
-            zip_path = os.path.join(UPLOAD_FOLDER, filename)
-            zip_file.save(zip_path)
-            start_time = time.time()
-            combined_html = extract_zip_and_combine_chapters(zip_path)
-            if not combined_html:
-                return jsonify({'error': 'Failed to extract and combine chapters from ZIP file'}), 500
-            
-            initial_fragment_id = 0
-            fragment_name = os.path.splitext(filename)[0]
-            soup = BeautifulSoup(combined_html, 'html.parser')
-            initial_parent_tag = soup.find('section').name if soup.find('section') else 'body'
-            
-            fragment_data, initial_fragment_id = extract_fragments(combined_html, initial_fragment_id, fragment_name, initial_parent_tag)
-            if not fragment_data:
-                return jsonify({'error': 'No valid HTML files processed'}), 400
-            columns = ["fragment_id", "fragment_name", "Level", "element_type", "element_class", "attributes"] + [f'Level_{lvl}_{tag}' for lvl in levels for tag in tags]
-            df_combined = pd.DataFrame(fragment_data, columns=columns)
-            with open(PATTERN_FILE_PATH, 'r') as f:
-                pattern_data = json.load(f)
-            df_combined = match_patterns(df_combined, pattern_data)
-            df_clustered = perform_clustering(df_combined)
-            clusters, noise = structure_clusters(df_clustered)
-            output_data = {'clusters': clusters, 'noise': noise}
-            output_filename = os.path.join(CLUSTER_OUTPUT_FOLDER, f"clustered_{filename}.json")
-            with open(output_filename, 'w') as f:
-                json.dump(output_data, f, indent=4)
-            end_time = time.time()
-            logging.info(f"Clustering completed in {end_time - start_time:.2f} seconds")
-            return jsonify({'success': True})
-        else:
-            return jsonify({'error': 'Invalid file format. Please upload a ZIP file or EPUB file.'}), 400
-    except Exception as e:
-        logging.error(f"Error occurred during clustering: {e}")
-        return jsonify({'error': 'An error occurred during clustering'}), 500
-
 @app.route('/upload', methods=['POST'])
 def upload_files():
     try:
@@ -312,32 +270,7 @@ def upload_files():
             return jsonify({'success': True})
         else:
             return jsonify({'error': 'Invalid file format. Please upload a ZIP file.'}), 400
-            # start_time = time.time()
-            # combined_html = extract_zip_and_combine_chapters(zip_path)
-            # if not combined_html:
-            #     return jsonify({'error': 'Failed to extract and combine chapters from ZIP file'}), 500
-            
-            # initial_fragment_id = 0
-            # fragment_name = os.path.splitext(filename)[0]
-            # soup = BeautifulSoup(combined_html, 'html.parser')
-            # initial_parent_tag = soup.find('section').name if soup.find('section') else 'body'
-            
-            # fragment_data, initial_fragment_id = extract_fragments(combined_html, initial_fragment_id, fragment_name, initial_parent_tag)
-            # if not fragment_data:
-            #     return jsonify({'error': 'No valid HTML files processed'}), 400
-            # columns = ["fragment_id", "fragment_name", "Level", "element_type", "element_class", "attributes"] + [f'Level_{lvl}_{tag}' for lvl in levels for tag in tags]
-            # df_combined = pd.DataFrame(fragment_data, columns=columns)
-            # with open(PATTERN_FILE_PATH, 'r') as f:
-            #     pattern_data = json.load(f)
-            # df_combined = match_patterns(df_combined, pattern_data)
-            # df_clustered = perform_clustering(df_combined)
-            # clusters, noise = structure_clusters(df_clustered)
-            # output_data = {'clusters': clusters, 'noise': noise}
-            # output_filename = os.path.join(CLUSTER_OUTPUT_FOLDER, f"clustered_{filename}.json")
-            # with open(output_filename, 'w') as f:
-            #     json.dump(output_data, f, indent=4)
-            # end_time = time.time()
-            # logging.info(f"Clustering completed in {end_time - start_time:.2f} seconds")
+           
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
